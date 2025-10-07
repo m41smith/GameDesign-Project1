@@ -49,6 +49,7 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 }
 
 func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
+	// Draws start screen with "How to Play" text
 	if spaceGame.state == gameStateStart {
 		const x = 350
 		drawFace := text.NewGoXFace(spaceGame.font)
@@ -105,7 +106,6 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 		textOpts.GeoM.Translate(x+40, 590)
 		textOpts.ColorScale.ScaleWithColor(colornames.Red)
 		text.Draw(screen, "Shoot enemies to get points, any enemies that get past you take away points", drawFace, textOpts)
-
 	} else {
 		drawOps := ebiten.DrawImageOptions{}
 		const repeat = 3
@@ -120,6 +120,7 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 	}
 }
 
+// Layout Sets window parameters
 func (spaceGame starsAndSpaceGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return outsideWidth, outsideHeight
 }
@@ -145,6 +146,7 @@ func main() {
 	}
 }
 
+// LoadFont implements the font used in the game
 func LoadFont(fontFile string, size float64) font.Face {
 	fileHandle, err := os.Open(fontFile)
 	if err != nil {
