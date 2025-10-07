@@ -26,15 +26,24 @@ const (
 
 type starsAndSpaceGame struct {
 	player          *ebiten.Image
+	xPos            int
+	yPos            int
 	background      *ebiten.Image
 	backgroundXView int
 	state           gameState
 	font            font.Face
+	enemy           []*enemyUnit
+}
+
+type enemyUnit struct {
+	pic  *ebiten.Image
+	xPos float64
+	yPos float64
 }
 
 func (spaceGame *starsAndSpaceGame) Update() error {
 	if spaceGame.state == gameStateStart {
-		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
 			spaceGame.state = gameStatePlay
 		}
 		return nil
@@ -52,6 +61,7 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 	// Draws start screen with "How to Play" text
 	if spaceGame.state == gameStateStart {
 		const x = 350
+		screen.Fill(colornames.Khaki)
 		drawFace := text.NewGoXFace(spaceGame.font)
 		textOpts := &text.DrawOptions{
 			DrawImageOptions: ebiten.DrawImageOptions{},
