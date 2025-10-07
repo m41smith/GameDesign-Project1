@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -17,22 +18,15 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
-type gameState int
-
-const (
-	gameStateStart gameState = iota
-	gameStatePlay
-)
-
 type starsAndSpaceGame struct {
 	player          *ebiten.Image
-	xPos            int
-	yPos            int
+	xPos            float64
+	yPos            float64
 	background      *ebiten.Image
 	backgroundXView int
-	state           gameState
 	font            font.Face
 	enemy           []*enemyUnit
+	score           float64
 }
 
 type enemyUnit struct {
@@ -42,92 +36,102 @@ type enemyUnit struct {
 }
 
 func (spaceGame *starsAndSpaceGame) Update() error {
-	if spaceGame.state == gameStateStart {
-		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-			spaceGame.state = gameStatePlay
+	const x = 350
+	backgroundWidth := spaceGame.background.Bounds().Dx()
+	maxX := backgroundWidth * 2
+	spaceGame.backgroundXView -= 4
+	spaceGame.backgroundXView %= maxX
+	maxY := spaceGame.background.Bounds().Dy() - 625
+	if spaceGame.yPos <= -500 {
+		if ebiten.IsKeyPressed(ebiten.KeyUp) {
+			spaceGame.yPos += 0
+		} else if ebiten.IsKeyPressed(ebiten.KeyDown) {
+			spaceGame.yPos += 5
 		}
-		return nil
+	} else if spaceGame.yPos > float64(maxY) {
+		if ebiten.IsKeyPressed(ebiten.KeyUp) {
+			spaceGame.yPos += -5
+		} else if ebiten.IsKeyPressed(ebiten.KeyDown) {
+			spaceGame.yPos += 0
+		}
 	} else {
-		backgroundWidth := spaceGame.background.Bounds().Dx()
-		maxX := backgroundWidth * 2
-		spaceGame.backgroundXView -= 4
-		spaceGame.backgroundXView %= maxX
-		inpututil.IsKeyJustPressed(ebiten.KeyLeft)
-		return nil
+		if ebiten.IsKeyPressed(ebiten.KeyUp) {
+			spaceGame.yPos += -5
+		} else if ebiten.IsKeyPressed(ebiten.KeyDown) {
+			spaceGame.yPos += 5
+		}
 	}
+	spaceGame.score = spaceGame.yPos
+	inpututil.IsKeyJustPressed(ebiten.KeyLeft)
+	return nil
 }
 
 func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
-	// Draws start screen with "How to Play" text
-	if spaceGame.state == gameStateStart {
-		const x = 350
-		screen.Fill(colornames.Khaki)
-		drawFace := text.NewGoXFace(spaceGame.font)
-		textOpts := &text.DrawOptions{
-			DrawImageOptions: ebiten.DrawImageOptions{},
-			LayoutOptions:    text.LayoutOptions{},
-		}
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x, 390)
-		textOpts.ColorScale.ScaleWithColor(colornames.Red)
-		text.Draw(screen, "How to Play: ", drawFace, textOpts)
 
-		textOpts = &text.DrawOptions{
-			DrawImageOptions: ebiten.DrawImageOptions{},
-			LayoutOptions:    text.LayoutOptions{},
-		}
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x+20, 430)
-		textOpts.ColorScale.ScaleWithColor(colornames.Red)
-		text.Draw(screen, "Controls:", drawFace, textOpts)
-
-		textOpts = &text.DrawOptions{
-			DrawImageOptions: ebiten.DrawImageOptions{},
-			LayoutOptions:    text.LayoutOptions{},
-		}
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x+40, 470)
-		textOpts.ColorScale.ScaleWithColor(colornames.Red)
-		text.Draw(screen, "Arrow Keys to Move (or A and D).", drawFace, textOpts)
-
-		textOpts = &text.DrawOptions{
-			DrawImageOptions: ebiten.DrawImageOptions{},
-			LayoutOptions:    text.LayoutOptions{},
-		}
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x+40, 510)
-		textOpts.ColorScale.ScaleWithColor(colornames.Red)
-		text.Draw(screen, "Space to shoot.", drawFace, textOpts)
-
-		textOpts = &text.DrawOptions{
-			DrawImageOptions: ebiten.DrawImageOptions{},
-			LayoutOptions:    text.LayoutOptions{},
-		}
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x+20, 550)
-		textOpts.ColorScale.ScaleWithColor(colornames.Red)
-		text.Draw(screen, "Objective:", drawFace, textOpts)
-
-		textOpts = &text.DrawOptions{
-			DrawImageOptions: ebiten.DrawImageOptions{},
-			LayoutOptions:    text.LayoutOptions{},
-		}
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x+40, 590)
-		textOpts.ColorScale.ScaleWithColor(colornames.Red)
-		text.Draw(screen, "Shoot enemies to get points, any enemies that get past you take away points", drawFace, textOpts)
-	} else {
-		drawOps := ebiten.DrawImageOptions{}
-		const repeat = 3
-		backgroundWidth := spaceGame.background.Bounds().Dx()
-		for count := 0; count < repeat; count += 1 {
-			drawOps.GeoM.Reset()
-			drawOps.GeoM.Translate(float64(backgroundWidth*count),
-				float64(0))
-			drawOps.GeoM.Translate(float64(spaceGame.backgroundXView), 0)
-			screen.DrawImage(spaceGame.background, &drawOps)
-		}
+	drawOps := ebiten.DrawImageOptions{}
+	const repeat = 3
+	backgroundWidth := spaceGame.background.Bounds().Dx()
+	for count := 0; count < repeat; count += 1 {
+		drawOps.GeoM.Reset()
+		drawOps.GeoM.Translate(float64(backgroundWidth*count),
+			float64(0))
+		drawOps.GeoM.Translate(float64(spaceGame.backgroundXView), 0)
+		screen.DrawImage(spaceGame.background, &drawOps)
 	}
+
+	const x = 350
+	drawFace := text.NewGoXFace(spaceGame.font)
+	textOpts := &text.DrawOptions{
+		DrawImageOptions: ebiten.DrawImageOptions{},
+		LayoutOptions:    text.LayoutOptions{},
+	}
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x, 90)
+	textOpts.ColorScale.ScaleWithColor(colornames.Red)
+	text.Draw(screen, "How to Play: Controls: Arrow Keys to Move (or W and S).", drawFace, textOpts)
+
+	textOpts = &text.DrawOptions{
+		DrawImageOptions: ebiten.DrawImageOptions{},
+		LayoutOptions:    text.LayoutOptions{},
+	}
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x+20, 120)
+	textOpts.ColorScale.ScaleWithColor(colornames.Red)
+	text.Draw(screen, "Space to shoot.", drawFace, textOpts)
+
+	textOpts = &text.DrawOptions{
+		DrawImageOptions: ebiten.DrawImageOptions{},
+		LayoutOptions:    text.LayoutOptions{},
+	}
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x, 150)
+	textOpts.ColorScale.ScaleWithColor(colornames.Red)
+	text.Draw(screen, "Objective: Shoot enemies to get points, any enemies that get past you take away points", drawFace, textOpts)
+
+	//textOpts = &text.DrawOptions{
+	//	DrawImageOptions: ebiten.DrawImageOptions{},
+	//	LayoutOptions:    text.LayoutOptions{},
+	//}
+	//textOpts.GeoM.Reset()
+	//textOpts.GeoM.Translate(x, 250)
+	//textOpts.ColorScale.ScaleWithColor(colornames.Red)
+	//text.Draw(screen, strconv.Itoa(spaceGame.background.Bounds().Dx()), drawFace, textOpts)
+
+	textOpts = &text.DrawOptions{
+		DrawImageOptions: ebiten.DrawImageOptions{},
+		LayoutOptions:    text.LayoutOptions{},
+	}
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x, 250)
+	textOpts.ColorScale.ScaleWithColor(colornames.Red)
+	text.Draw(screen, strconv.FormatFloat(spaceGame.score, 'f', -1, 64), drawFace, textOpts)
+
+	//playerUnit := spaceGame.player.Bounds().Dx()
+	playerOpts := ebiten.DrawImageOptions{}
+	playerOpts.GeoM.Reset()
+	playerOpts.GeoM.Translate(350, 500)
+	playerOpts.GeoM.Translate(spaceGame.xPos, spaceGame.yPos)
+	screen.DrawImage(spaceGame.player, &playerOpts)
 }
 
 // Layout Sets window parameters
@@ -145,10 +149,15 @@ func main() {
 		fmt.Println("Unable to load background image:", err)
 	}
 
+	playerUnit, _, errP := ebitenutil.NewImageFromFile("UFO.png")
+	if errP != nil {
+		fmt.Println("Unable to load Player unit:", err)
+	}
+
 	demo := starsAndSpaceGame{
-		player:     nil,
+		player:     playerUnit,
 		background: backgroundPict,
-		font:       LoadFont("Ubuntu-Regular.ttf", 24),
+		font:       LoadFont("Ubuntu-Regular.ttf", 18),
 	}
 	err = ebiten.RunGame(&demo)
 	if err != nil {
