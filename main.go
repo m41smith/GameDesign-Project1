@@ -3,79 +3,167 @@ package main
 
 import (
 	"fmt"
+	_ "image/png"
+	"io"
+	"log"
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/lafriks/go-tiled"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"golang.org/x/image/colornames"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
+)
+
+type gameState int
+
+const (
+	gameStateStart gameState = iota
+	gameStatePlay
 )
 
 const mapPath = "StarsAndSpace.tmx"
 
-type mapGame struct {
-	Level    *tiled.Map
-	tileHash map[uint32]*ebiten.Image
+type starsAndSpaceGame struct {
+	player          *ebiten.Image
+	background      *ebiten.Image
+	backgroundXView int
+	state           gameState
+	font            font.Face
 }
 
-func (m mapGame) Update() error {
-	return nil
+func (spaceGame *starsAndSpaceGame) Update() error {
+	if spaceGame.state == gameStateStart {
+		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+			spaceGame.state = gameStatePlay
+		}
+		return nil
+	} else {
+		backgroundWidth := spaceGame.background.Bounds().Dx()
+		maxX := backgroundWidth * 2
+		spaceGame.backgroundXView -= 4
+		spaceGame.backgroundXView %= maxX
+		inpututil.IsKeyJustPressed(ebiten.KeyLeft)
+		return nil
+	}
 }
-func (m mapGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	//TODO implement me
+
+func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
+	if spaceGame.state == gameStateStart {
+		const x = 350
+		drawFace := text.NewGoXFace(spaceGame.font)
+		textOpts := &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 390)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "How to Play: ", drawFace, textOpts)
+
+		textOpts = &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x+20, 430)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "Controls:", drawFace, textOpts)
+
+		textOpts = &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x+40, 470)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "Arrow Keys to Move (or A and D).", drawFace, textOpts)
+
+		textOpts = &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x+40, 510)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "Space to shoot.", drawFace, textOpts)
+
+		textOpts = &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x+20, 550)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "Objective:", drawFace, textOpts)
+
+		textOpts = &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x+40, 590)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "Shoot enemies to get points, any enemies that get past you take away points", drawFace, textOpts)
+
+	} else {
+		drawOps := ebiten.DrawImageOptions{}
+		const repeat = 3
+		backgroundWidth := spaceGame.background.Bounds().Dx()
+		for count := 0; count < repeat; count += 1 {
+			drawOps.GeoM.Reset()
+			drawOps.GeoM.Translate(float64(backgroundWidth*count),
+				float64(0))
+			drawOps.GeoM.Translate(float64(spaceGame.backgroundXView), 0)
+			screen.DrawImage(spaceGame.background, &drawOps)
+		}
+	}
+}
+
+func (spaceGame starsAndSpaceGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return outsideWidth, outsideHeight
 }
 
 func main() {
-	// Parse .tmx file.
-	gameMap, err := tiled.LoadFile(mapPath)
+	//	ebiten.SetWindowSize(1000, 1000)
+	ebiten.SetFullscreen(true)
+	ebiten.SetWindowTitle("Scroller Example")
+	//New image from file returns image as image.Image (_) and ebiten.Image
+	backgroundPict, _, err := ebitenutil.NewImageFromFile("StarsAndSpace.png")
 	if err != nil {
-		fmt.Printf("error parsing map: %s", err.Error())
-		os.Exit(2)
+		fmt.Println("Unable to load background image:", err)
 	}
-	windowWidth := gameMap.Width * gameMap.TileWidth
-	windowHeight := gameMap.Height * gameMap.TileHeight
-	ebiten.SetWindowSize(windowWidth, windowHeight)
 
-	ebitenImageMap := makeEbiteImagesFromMap(*gameMap)
-	oneLevelGame := mapGame{
-		Level:    gameMap,
-		tileHash: ebitenImageMap,
+	demo := starsAndSpaceGame{
+		player:     nil,
+		background: backgroundPict,
+		font:       LoadFont("Ubuntu-Regular.ttf", 24),
 	}
-	fmt.Println("tilesets:", gameMap.Tilesets[0].Tiles)
-	//fmt.Println("layers:", gameMap.Layers[0].Tiles)
-	fmt.Print("type:", fmt.Sprintf("%T", gameMap.Layers[0].Tiles[0]))
-	err = ebiten.RunGame(&oneLevelGame)
+	err = ebiten.RunGame(&demo)
 	if err != nil {
-		fmt.Println("Couldn't run game:", err)
+		fmt.Println("Failed to run game", err)
 	}
 }
-func makeEbiteImagesFromMap(tiledMap tiled.Map) map[uint32]*ebiten.Image {
-	idToImage := make(map[uint32]*ebiten.Image)
-	for _, tile := range tiledMap.Tilesets[0].Tiles {
-		ebitenImageTile, _, err :=
-			ebitenutil.NewImageFromFile(tile.Image.Source)
-		if err != nil {
-			fmt.Println("Error loading tile image:",
-				tile.Image.Source, err)
-		}
-		idToImage[tile.ID] = ebitenImageTile
-	}
-	return idToImage
-}
 
-func (game mapGame) Draw(screen *ebiten.Image) {
-	drawOptions := ebiten.DrawImageOptions{}
-	for tileY := 0; tileY < game.Level.Height; tileY += 1 {
-		for tileX := 0; tileX < game.Level.Width; tileX += 1 {
-			drawOptions.GeoM.Reset()
-			TileXpos := float64(game.Level.TileWidth * tileX)
-			TileYpos := float64(game.Level.TileHeight * tileY)
-			drawOptions.GeoM.Translate(TileXpos, TileYpos)
-			tileToDraw :=
-				game.Level.Layers[0].Tiles[tileY*game.Level.Width+tileX]
-			ebitenTileToDraw := game.tileHash[tileToDraw.ID]
-			screen.DrawImage(ebitenTileToDraw,
-				&drawOptions)
-		}
+func LoadFont(fontFile string, size float64) font.Face {
+	fileHandle, err := os.Open(fontFile)
+	if err != nil {
+		log.Fatal(err)
 	}
+	fontData, err := io.ReadAll(fileHandle)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ttFont, err := opentype.Parse(fontData)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fontFace, err := opentype.NewFace(ttFont, &opentype.FaceOptions{
+		Size:    size,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	return fontFace
 }
