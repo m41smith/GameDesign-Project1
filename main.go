@@ -24,8 +24,6 @@ const (
 	gameStatePlay
 )
 
-const mapPath = "StarsAndSpace.tmx"
-
 type starsAndSpaceGame struct {
 	player          *ebiten.Image
 	background      *ebiten.Image
