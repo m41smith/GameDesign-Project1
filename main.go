@@ -88,7 +88,6 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 	if spaceGame.state == playState {
 		backgroundWidth := spaceGame.background.Bounds().Dx()
 		maxX := backgroundWidth * 2
-		//var shotCount int
 		spaceGame.backgroundXView -= 4
 		spaceGame.backgroundXView %= maxX
 		enemyEnt, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
@@ -114,10 +113,12 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 				spaceGame.player.yPlayerPos += 5
 			}
 		}
+		spaceGame.player.collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.player.xPlayerPos-55), float64(spaceGame.player.yPlayerPos-25), 55, 25)
 
 		for i := 0; i < len(spaceGame.enemy); i++ {
 			if spaceGame.enemy[i].xEnemyPos > 0-spaceGame.enemy[i].pic.Bounds().Dx() {
 				spaceGame.enemy[i].xEnemyPos += -spaceGame.speed
+				spaceGame.enemy[i].collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.enemy[i].xEnemyPos-55), float64(spaceGame.enemy[i].yEnemyPos-25), 55, 25)
 			} else {
 				spaceGame.enemy[i] = NewEnemy(1000, 950, enemyEnt)
 				spaceGame.score -= 1
@@ -149,11 +150,15 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 		for i := 0; i < len(spaceGame.laser); i++ {
 			if spaceGame.laser[i].xLaserPos < 900 && spaceGame.laser[i].xLaserPos > 0 {
 				spaceGame.laser[i].xLaserPos += spaceGame.speed
+				spaceGame.laser[i].collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.laser[i].xLaserPos-21), float64(spaceGame.laser[i].yLaserPos-4), 42, 4)
 			} else if spaceGame.laser[i].xLaserPos >= 900 && spaceGame.laser[i].xLaserPos < 1000 {
 				spaceGame.ammoCount++
 				spaceGame.laser[i].xLaserPos = -200
+				spaceGame.laser[i].collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.laser[i].xLaserPos-21), float64(spaceGame.laser[i].yLaserPos-4), 42, 4)
 			}
+
 		}
+
 		return nil
 	} else {
 		inpututil.IsKeyJustPressed(ebiten.KeyLeft)
@@ -163,90 +168,94 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 }
 
 func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
+	if spaceGame.state == playState {
 
-	// Draws scrolling background
-	drawOps := ebiten.DrawImageOptions{}
-	const repeat = 3
-	backgroundWidth := spaceGame.background.Bounds().Dx()
-	for count := 0; count < repeat; count += 1 {
-		drawOps.GeoM.Reset()
-		drawOps.GeoM.Translate(float64(backgroundWidth*count),
-			float64(0))
-		drawOps.GeoM.Translate(float64(spaceGame.backgroundXView), 0)
-		screen.DrawImage(spaceGame.background, &drawOps)
-	}
+		// Draws scrolling background
+		drawOps := ebiten.DrawImageOptions{}
+		const repeat = 3
+		backgroundWidth := spaceGame.background.Bounds().Dx()
+		for count := 0; count < repeat; count += 1 {
+			drawOps.GeoM.Reset()
+			drawOps.GeoM.Translate(float64(backgroundWidth*count),
+				float64(0))
+			drawOps.GeoM.Translate(float64(spaceGame.backgroundXView), 0)
+			screen.DrawImage(spaceGame.background, &drawOps)
+		}
 
-	const x = 20
-	drawFace := text.NewGoXFace(spaceGame.font)
-	textOpts := &text.DrawOptions{
-		DrawImageOptions: ebiten.DrawImageOptions{},
-		LayoutOptions:    text.LayoutOptions{},
-	}
+		const x = 20
+		drawFace := text.NewGoXFace(spaceGame.font)
+		textOpts := &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
 
-	// Text explaining controls
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 30)
-	textOpts.ColorScale.ScaleWithColor(colornames.Red)
-	text.Draw(screen, "How to Play: Controls: Arrow Keys to Move (or W and S).", drawFace, textOpts)
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x+20, 60)
-	text.Draw(screen, "Space to shoot.", drawFace, textOpts)
+		// Text explaining controls
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 30)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "How to Play: Controls: Arrow Keys to Move (or W and S).", drawFace, textOpts)
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x+20, 60)
+		text.Draw(screen, "Space to shoot.", drawFace, textOpts)
 
-	// Text explaining game objective
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 90)
-	text.Draw(screen, "Objective: Shoot enemies to get points, any enemies that get past you take away points", drawFace, textOpts)
+		// Text explaining game objective
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 90)
+		text.Draw(screen, "Objective: Shoot enemies to get points, any enemies that get past you take away points", drawFace, textOpts)
 
-	// Text representing score value
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 120)
-	text.Draw(screen, "Score: "+strconv.Itoa(spaceGame.score), drawFace, textOpts)
+		// Text representing score value
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 120)
+		text.Draw(screen, "Score: "+strconv.Itoa(spaceGame.score), drawFace, textOpts)
 
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 150)
-	text.Draw(screen, "EnemyPos: "+strconv.Itoa(spaceGame.enemy[0].xEnemyPos), drawFace, textOpts)
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 150)
+		text.Draw(screen, "EnemyPos: "+strconv.Itoa(spaceGame.enemy[0].xEnemyPos), drawFace, textOpts)
 
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 180)
-	text.Draw(screen, "Enemy Count: "+strconv.Itoa(len(spaceGame.enemy)), drawFace, textOpts)
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 180)
+		text.Draw(screen, "Enemy Count: "+strconv.Itoa(len(spaceGame.enemy)), drawFace, textOpts)
 
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 210)
-	text.Draw(screen, "LaserPos: "+strconv.Itoa(spaceGame.laser[0].xLaserPos), drawFace, textOpts)
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 210)
+		text.Draw(screen, "LaserPos: "+strconv.Itoa(spaceGame.laser[0].xLaserPos), drawFace, textOpts)
 
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 240)
-	text.Draw(screen, "Players yPos: "+strconv.Itoa(spaceGame.player.yPlayerPos), drawFace, textOpts)
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 240)
+		text.Draw(screen, "Players yPos: "+strconv.Itoa(spaceGame.player.yPlayerPos), drawFace, textOpts)
 
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 270)
-	text.Draw(screen, "Shot Count: "+strconv.Itoa(spaceGame.shotCount), drawFace, textOpts)
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 270)
+		text.Draw(screen, "Shot Count: "+strconv.Itoa(spaceGame.shotCount), drawFace, textOpts)
 
-	textOpts.GeoM.Reset()
-	textOpts.GeoM.Translate(x, 300)
-	text.Draw(screen, "Ammo Count: "+strconv.Itoa(spaceGame.ammoCount), drawFace, textOpts)
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(x, 300)
+		text.Draw(screen, "Ammo Count: "+strconv.Itoa(spaceGame.ammoCount), drawFace, textOpts)
 
-	// Draws enemy units on screen
-	enemyDrawOpts := &ebiten.DrawImageOptions{}
-	for _, swarm := range spaceGame.enemy {
-		enemyDrawOpts.GeoM.Reset()
-		enemyDrawOpts.GeoM.Translate(float64(swarm.xEnemyPos), float64(swarm.yEnemyPos))
-		screen.DrawImage(swarm.pic, enemyDrawOpts)
-	}
+		// Draws enemy units on screen
+		enemyDrawOpts := &ebiten.DrawImageOptions{}
+		for _, swarm := range spaceGame.enemy {
+			enemyDrawOpts.GeoM.Reset()
+			enemyDrawOpts.GeoM.Translate(float64(swarm.xEnemyPos), float64(swarm.yEnemyPos))
+			screen.DrawImage(swarm.pic, enemyDrawOpts)
+		}
 
-	// Draws player unit on screen
-	playerDrawOpts := ebiten.DrawImageOptions{}
-	playerDrawOpts.GeoM.Reset()
-	playerDrawOpts.GeoM.Translate(x, 500)
-	playerDrawOpts.GeoM.Translate(float64(spaceGame.player.xPlayerPos), float64(spaceGame.player.yPlayerPos))
-	screen.DrawImage(spaceGame.player.pic, &playerDrawOpts)
+		// Draws player unit on screen
+		playerDrawOpts := ebiten.DrawImageOptions{}
+		playerDrawOpts.GeoM.Reset()
+		playerDrawOpts.GeoM.Translate(x, 500)
+		playerDrawOpts.GeoM.Translate(float64(spaceGame.player.xPlayerPos), float64(spaceGame.player.yPlayerPos))
+		screen.DrawImage(spaceGame.player.pic, &playerDrawOpts)
 
-	// Draws laser blast on screen
-	laserDrawOpts := &ebiten.DrawImageOptions{}
-	for _, shots := range spaceGame.laser {
-		laserDrawOpts.GeoM.Reset()
-		laserDrawOpts.GeoM.Translate(float64(shots.xLaserPos), float64(shots.yLaserPos))
-		screen.DrawImage(shots.pic, laserDrawOpts)
+		// Draws laser blast on screen
+		laserDrawOpts := &ebiten.DrawImageOptions{}
+		for _, shots := range spaceGame.laser {
+			laserDrawOpts.GeoM.Reset()
+			laserDrawOpts.GeoM.Translate(float64(shots.xLaserPos), float64(shots.yLaserPos))
+			screen.DrawImage(shots.pic, laserDrawOpts)
+		}
+	} else {
+
 	}
 
 }
