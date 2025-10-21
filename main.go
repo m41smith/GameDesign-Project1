@@ -87,17 +87,15 @@ func NewLaser(xStart, yStart int, image *ebiten.Image) *laserBlast {
 // Trying to create collisions
 func (spaceGame *starsAndSpaceGame) Init() {
 	spaceGame.space = resolv.NewSpace(1000, 1000, 16, 16)
-
-	spaceGame.player.playerCollisionRect = resolv.NewRectangle(float64(spaceGame.player.xPlayerPos), float64(spaceGame.player.yPlayerPos), 55, 25)
+	spaceGame.player.playerCollisionRect = resolv.NewRectangle(float64(spaceGame.player.xPlayerPos)-27.5, float64(spaceGame.player.yPlayerPos)-12.5, 55, 25)
 	spaceGame.space.Add(spaceGame.player.playerCollisionRect)
 
 	for i := 0; i < len(spaceGame.enemy); i++ {
-		spaceGame.enemy[i].enemyCollisionRect = resolv.NewRectangle(float64(spaceGame.enemy[i].xEnemyPos), float64(spaceGame.enemy[i].yEnemyPos), 55, 25)
+		spaceGame.enemy[i].enemyCollisionRect = resolv.NewRectangle(float64(spaceGame.enemy[i].xEnemyPos)-27.5, float64(spaceGame.enemy[i].yEnemyPos)-12.5, 55, 25)
 		spaceGame.space.Add(spaceGame.enemy[i].enemyCollisionRect)
 	}
-
 	for i := 0; i < len(spaceGame.laser); i++ {
-		spaceGame.laser[i].laserCollisionRect = resolv.NewRectangle(float64(spaceGame.laser[i].xLaserPos-21), float64(spaceGame.laser[i].yLaserPos-4), 42, 4)
+		spaceGame.laser[i].laserCollisionRect = resolv.NewRectangle(float64(spaceGame.laser[i].xLaserPos-21), float64(spaceGame.laser[i].yLaserPos-2), 42, 4)
 		spaceGame.space.Add(spaceGame.laser[i].laserCollisionRect)
 	}
 }
@@ -138,6 +136,7 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 		for i := 0; i < len(spaceGame.enemy); i++ {
 			if spaceGame.enemy[i].xEnemyPos > 0-spaceGame.enemy[i].pic.Bounds().Dx() {
 				spaceGame.enemy[i].xEnemyPos += -spaceGame.speed
+
 			} else {
 				spaceGame.enemy[i] = NewEnemy(1000, 950, enemyEnt)
 				spaceGame.score -= 1
@@ -161,6 +160,18 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 				spaceGame.shotCount++
 			}
 		}
+
+		// Attempt at collision
+		//for _, enemies := range spaceGame.enemy {
+		//	spaceGame.player.playerCollisionRect.IntersectionTest(resolv.IntersectionTestSettings{
+		//		TestAgainst: enemies.enemyCollisionRect.SelectTouchingCells(1).FilterShapes(),
+		//		OnIntersect: func(set resolv.IntersectionSet) bool {
+		//			spaceGame.score -= 1000
+		//			return true
+		//		},
+		//	})
+		//}
+
 		// Prevents shotCount from going out of bounds
 		if spaceGame.shotCount >= 10 {
 			spaceGame.shotCount = 0
@@ -176,6 +187,11 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 				spaceGame.laser[i].xLaserPos = -200
 			}
 		}
+
+		// Forces game over for testing until collisions work
+		if inpututil.IsKeyJustPressed(ebiten.KeyBackspace) {
+			spaceGame.state = endState
+		}
 		return nil
 	} else {
 		// Implement Game Over
@@ -186,7 +202,6 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 
 func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 	if spaceGame.state == playState {
-
 		// Draws scrolling background
 		drawOps := ebiten.DrawImageOptions{}
 		const repeat = 3
@@ -253,7 +268,16 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 			screen.DrawImage(shots.pic, laserDrawOpts)
 		}
 	} else {
-		// Implement Game Over
+		drawFace := text.NewGoXFace(LoadFont("Ubuntu-Regular.ttf", 30))
+		screen.Fill(colornames.Black)
+		textOpts := &text.DrawOptions{
+			DrawImageOptions: ebiten.DrawImageOptions{},
+			LayoutOptions:    text.LayoutOptions{},
+		}
+		textOpts.GeoM.Reset()
+		textOpts.GeoM.Translate(400, 470)
+		textOpts.ColorScale.ScaleWithColor(colornames.Red)
+		text.Draw(screen, "Game Over", drawFace, textOpts)
 	}
 }
 
