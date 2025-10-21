@@ -21,63 +21,113 @@ import (
 
 type starsAndSpaceGame struct {
 	player          *ebiten.Image
-	xPos            float64
-	yPos            float64
+	xPos            int
+	yPos            int
 	background      *ebiten.Image
 	backgroundXView int
 	font            font.Face
 	enemy           []*enemyShip
 	score           int
 	speed           int
+	laser           []*laserBlast
+	shotCount       int
+	ammoCount       int
 }
 
 type enemyShip struct {
 	pic       *ebiten.Image
-	xEnemyPos float64
-	yEnemyPos float64
+	xEnemyPos int
+	yEnemyPos int
+}
+
+type laserBlast struct {
+	pic        *ebiten.Image
+	xLaserPos  int
+	yLaserPos  int
+	laserSpeed int
 }
 
 func NewEnemy(xStart, yStart int, image *ebiten.Image) *enemyShip {
 	return &enemyShip{
 		pic:       image,
-		xEnemyPos: float64(xStart),
-		yEnemyPos: float64(rand.Intn(yStart)),
+		xEnemyPos: randRange(xStart, 2500),
+		yEnemyPos: rand.Intn(yStart),
+	}
+}
+
+func NewLaser(xStart, yStart int, image *ebiten.Image) *laserBlast {
+	return &laserBlast{
+		pic:       image,
+		xLaserPos: xStart,
+		yLaserPos: yStart,
 	}
 }
 
 func (spaceGame *starsAndSpaceGame) Update() error {
 	backgroundWidth := spaceGame.background.Bounds().Dx()
 	maxX := backgroundWidth * 2
+	//var shotCount int
 	spaceGame.backgroundXView -= 4
 	spaceGame.backgroundXView %= maxX
+	enemyEnt, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
+	if err != nil {
+		fmt.Println("Unable to load Enemy entity:", err)
+	}
 	if spaceGame.yPos <= -500 {
-		if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
 			spaceGame.yPos += 0
-		} else if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
 			spaceGame.yPos += 5
 		}
 	} else if spaceGame.yPos >= 475 {
-		if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
 			spaceGame.yPos += -5
-		} else if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
 			spaceGame.yPos += 0
 		}
 	} else {
-		if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
 			spaceGame.yPos += -5
-		} else if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
 			spaceGame.yPos += 5
 		}
 	}
-	//spaceGame.score = spaceGame.yPos
-
-	//spaceGame.score = spaceGame.enemy[0].xEnemyPos
 
 	for i := 0; i < len(spaceGame.enemy); i++ {
-		if spaceGame.enemy[i].xEnemyPos > float64(0-spaceGame.enemy[i].pic.Bounds().Dx()) {
-			spaceGame.enemy[i].xEnemyPos += -float64(spaceGame.speed)
+		if spaceGame.enemy[i].xEnemyPos > 0-spaceGame.enemy[i].pic.Bounds().Dx() {
+			spaceGame.enemy[i].xEnemyPos += -spaceGame.speed
 		} else {
-			spaceGame.enemy[i].xEnemyPos = spaceGame.enemy[i].xEnemyPos
+			spaceGame.enemy[i] = NewEnemy(1000, 950, enemyEnt)
+			spaceGame.score -= 1
+		}
+	}
+
+	// Gets total number of lasers for ammoCount
+	if spaceGame.ammoCount == 9000 {
+		spaceGame.ammoCount = len(spaceGame.laser)
+	}
+
+	// Fires laser
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		// Allows you to shoot only if you have ammo
+		if spaceGame.ammoCount > 0 {
+			spaceGame.ammoCount--
+			spaceGame.laser[spaceGame.shotCount].xLaserPos = spaceGame.xPos + spaceGame.player.Bounds().Dx()
+			spaceGame.laser[spaceGame.shotCount].yLaserPos = spaceGame.yPos + 512
+			spaceGame.shotCount++
+		}
+	}
+	// Prevents shotCount from going out of bounds
+	if spaceGame.shotCount >= 10 {
+		spaceGame.shotCount = 0
+	}
+	// Moves fired lasers
+	for i := 0; i < len(spaceGame.laser); i++ {
+		if spaceGame.laser[i].xLaserPos < 900 && spaceGame.laser[i].xLaserPos > 0 {
+			spaceGame.laser[i].xLaserPos += spaceGame.speed
+		} else if spaceGame.laser[i].xLaserPos >= 900 && spaceGame.laser[i].xLaserPos < 1000 {
+			spaceGame.ammoCount++
+			spaceGame.laser[i].xLaserPos = -200
 		}
 	}
 
@@ -127,17 +177,33 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 
 	textOpts.GeoM.Reset()
 	textOpts.GeoM.Translate(x, 150)
-	text.Draw(screen, "EnemyPos: "+strconv.FormatFloat(spaceGame.enemy[0].xEnemyPos, 'f', -1, 64), drawFace, textOpts)
+	text.Draw(screen, "EnemyPos: "+strconv.Itoa(spaceGame.enemy[0].xEnemyPos), drawFace, textOpts)
 
 	textOpts.GeoM.Reset()
 	textOpts.GeoM.Translate(x, 180)
 	text.Draw(screen, "Enemy Count: "+strconv.Itoa(len(spaceGame.enemy)), drawFace, textOpts)
 
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x, 210)
+	text.Draw(screen, "LaserPos: "+strconv.Itoa(spaceGame.laser[0].xLaserPos), drawFace, textOpts)
+
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x, 240)
+	text.Draw(screen, "yPos: "+strconv.Itoa(spaceGame.yPos), drawFace, textOpts)
+
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x, 270)
+	text.Draw(screen, "Shot Count: "+strconv.Itoa(spaceGame.shotCount), drawFace, textOpts)
+
+	textOpts.GeoM.Reset()
+	textOpts.GeoM.Translate(x, 300)
+	text.Draw(screen, "Ammo Count: "+strconv.Itoa(spaceGame.ammoCount), drawFace, textOpts)
+
 	// Draws enemy units on screen
 	enemyDrawOpts := &ebiten.DrawImageOptions{}
 	for _, swarm := range spaceGame.enemy {
 		enemyDrawOpts.GeoM.Reset()
-		enemyDrawOpts.GeoM.Translate(swarm.xEnemyPos, swarm.yEnemyPos)
+		enemyDrawOpts.GeoM.Translate(float64(swarm.xEnemyPos), float64(swarm.yEnemyPos))
 		screen.DrawImage(swarm.pic, enemyDrawOpts)
 	}
 
@@ -145,8 +211,17 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 	playerDrawOpts := ebiten.DrawImageOptions{}
 	playerDrawOpts.GeoM.Reset()
 	playerDrawOpts.GeoM.Translate(x, 500)
-	playerDrawOpts.GeoM.Translate(spaceGame.xPos, spaceGame.yPos)
+	playerDrawOpts.GeoM.Translate(float64(spaceGame.xPos), float64(spaceGame.yPos))
 	screen.DrawImage(spaceGame.player, &playerDrawOpts)
+
+	// Draws laser blast on screen
+	laserDrawOpts := &ebiten.DrawImageOptions{}
+	for _, shots := range spaceGame.laser {
+		laserDrawOpts.GeoM.Reset()
+		laserDrawOpts.GeoM.Translate(float64(shots.xLaserPos), float64(shots.yLaserPos))
+		screen.DrawImage(shots.pic, laserDrawOpts)
+	}
+
 }
 
 // Layout Sets window parameters
@@ -158,33 +233,23 @@ func main() {
 	ebiten.SetWindowSize(1000, 1000)
 	ebiten.SetFullscreen(false)
 	ebiten.SetWindowTitle("Scroller Example")
-	//New image from file returns image as image.Image (_) and ebiten.Image
 	backgroundPict, _, err := ebitenutil.NewImageFromFile("StarsAndSpace.png")
 	if err != nil {
 		fmt.Println("Unable to load background image:", err)
 	}
-	playerUnit, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
-	if err != nil {
-		fmt.Println("Unable to load Player unit:", err)
-	}
-	enemyUnits := make([]*enemyShip, 0)
-	enemyEnt, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
-	if err != nil {
-		fmt.Println("Unable to load Enemy entity:", err)
-	}
-	for i := 0; i < 3; i++ {
-		enemyUnits = append(enemyUnits, NewEnemy(1000, 950, enemyEnt))
-	}
-	enemyDelay()
-	//enemyUnits = append(enemyUnits, NewEnemy(900, 950, enemyEnt))
-	demo := starsAndSpaceGame{
+	playerUnit := makePlayer()
+	enemyUnits := makeEnemy()
+	lasers := makeLaser()
+	spaceScrollerGame := starsAndSpaceGame{
 		player:     playerUnit,
 		enemy:      enemyUnits,
+		laser:      lasers,
 		background: backgroundPict,
 		font:       LoadFont("Ubuntu-Regular.ttf", 18),
 		speed:      2,
+		ammoCount:  9000,
 	}
-	err = ebiten.RunGame(&demo)
+	err = ebiten.RunGame(&spaceScrollerGame)
 	if err != nil {
 		fmt.Println("Failed to run game", err)
 	}
@@ -212,8 +277,22 @@ func LoadFont(fontFile string, size float64) font.Face {
 	return fontFace
 }
 
-// Working on function to space out enemy spawns (WIP)
-func enemyDelay() {
+// Function to select a random integer between a minimum and maximum value
+func randRange(min, max int) int {
+	return rand.Intn(max-min) + min
+}
+
+// Function that creates player entity
+func makePlayer() *ebiten.Image {
+	playerUnit, _, err := ebitenutil.NewImageFromFile("./Entities/FriendlyUFO.png")
+	if err != nil {
+		fmt.Println("Unable to load Player unit:", err)
+	}
+	return playerUnit
+}
+
+// Function that creates enemy units
+func makeEnemy() []*enemyShip {
 	enemyUnits := make([]*enemyShip, 0)
 	enemyEnt, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
 	if err != nil {
@@ -222,4 +301,19 @@ func enemyDelay() {
 	for i := 0; i < 3; i++ {
 		enemyUnits = append(enemyUnits, NewEnemy(1000, 950, enemyEnt))
 	}
+	return enemyUnits
+}
+
+// Function that creates laser blasts for the game
+func makeLaser() []*laserBlast {
+	laserShots := make([]*laserBlast, 0)
+	laserEnt, _, err := ebitenutil.NewImageFromFile("./Entities/laserBlast.png")
+	if err != nil {
+		fmt.Println("Unable to load laser entity:", err)
+	}
+	for i := 0; i < 10; i++ {
+		laserShots = append(laserShots, NewLaser(-200, 0, laserEnt))
+		laserShots[i].laserSpeed = 2
+	}
+	return laserShots
 }
