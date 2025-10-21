@@ -11,18 +11,26 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/solarlune/resolv"
 	"golang.org/x/image/colornames"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 )
 
+type gameState int
+
+const (
+	playState gameState = iota
+	endState
+)
+
 type starsAndSpaceGame struct {
-	player          *ebiten.Image
-	xPos            int
-	yPos            int
+	player          playerShip
 	background      *ebiten.Image
 	backgroundXView int
 	font            font.Face
@@ -32,19 +40,32 @@ type starsAndSpaceGame struct {
 	laser           []*laserBlast
 	shotCount       int
 	ammoCount       int
+	space           *resolv.Space
+	state           gameState
+	audioContext    *audio.Context
+	audioPlayer     *audio.Player
+}
+
+type playerShip struct {
+	pic           *ebiten.Image
+	xPlayerPos    int
+	yPlayerPos    int
+	collisionRect *resolv.ConvexPolygon
 }
 
 type enemyShip struct {
-	pic       *ebiten.Image
-	xEnemyPos int
-	yEnemyPos int
+	pic           *ebiten.Image
+	xEnemyPos     int
+	yEnemyPos     int
+	collisionRect *resolv.ConvexPolygon
 }
 
 type laserBlast struct {
-	pic        *ebiten.Image
-	xLaserPos  int
-	yLaserPos  int
-	laserSpeed int
+	pic           *ebiten.Image
+	xLaserPos     int
+	yLaserPos     int
+	laserSpeed    int
+	collisionRect *resolv.ConvexPolygon
 }
 
 func NewEnemy(xStart, yStart int, image *ebiten.Image) *enemyShip {
@@ -64,75 +85,81 @@ func NewLaser(xStart, yStart int, image *ebiten.Image) *laserBlast {
 }
 
 func (spaceGame *starsAndSpaceGame) Update() error {
-	backgroundWidth := spaceGame.background.Bounds().Dx()
-	maxX := backgroundWidth * 2
-	//var shotCount int
-	spaceGame.backgroundXView -= 4
-	spaceGame.backgroundXView %= maxX
-	enemyEnt, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
-	if err != nil {
-		fmt.Println("Unable to load Enemy entity:", err)
-	}
-	if spaceGame.yPos <= -500 {
-		if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
-			spaceGame.yPos += 0
-		} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-			spaceGame.yPos += 5
+	if spaceGame.state == playState {
+		backgroundWidth := spaceGame.background.Bounds().Dx()
+		maxX := backgroundWidth * 2
+		//var shotCount int
+		spaceGame.backgroundXView -= 4
+		spaceGame.backgroundXView %= maxX
+		enemyEnt, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
+		if err != nil {
+			fmt.Println("Unable to load Enemy entity:", err)
 		}
-	} else if spaceGame.yPos >= 475 {
-		if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
-			spaceGame.yPos += -5
-		} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-			spaceGame.yPos += 0
-		}
-	} else {
-		if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
-			spaceGame.yPos += -5
-		} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-			spaceGame.yPos += 5
-		}
-	}
-
-	for i := 0; i < len(spaceGame.enemy); i++ {
-		if spaceGame.enemy[i].xEnemyPos > 0-spaceGame.enemy[i].pic.Bounds().Dx() {
-			spaceGame.enemy[i].xEnemyPos += -spaceGame.speed
+		if spaceGame.player.yPlayerPos <= -500 {
+			if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
+				spaceGame.player.yPlayerPos += 0
+			} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
+				spaceGame.player.yPlayerPos += 5
+			}
+		} else if spaceGame.player.yPlayerPos >= 475 {
+			if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
+				spaceGame.player.yPlayerPos += -5
+			} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
+				spaceGame.player.yPlayerPos += 0
+			}
 		} else {
-			spaceGame.enemy[i] = NewEnemy(1000, 950, enemyEnt)
-			spaceGame.score -= 1
+			if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
+				spaceGame.player.yPlayerPos += -5
+			} else if ebiten.IsKeyPressed(ebiten.KeyDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
+				spaceGame.player.yPlayerPos += 5
+			}
 		}
+
+		for i := 0; i < len(spaceGame.enemy); i++ {
+			if spaceGame.enemy[i].xEnemyPos > 0-spaceGame.enemy[i].pic.Bounds().Dx() {
+				spaceGame.enemy[i].xEnemyPos += -spaceGame.speed
+			} else {
+				spaceGame.enemy[i] = NewEnemy(1000, 950, enemyEnt)
+				spaceGame.score -= 1
+			}
+		}
+
+		// Gets total number of lasers for ammoCount
+		if spaceGame.ammoCount == 9000 {
+			spaceGame.ammoCount = len(spaceGame.laser)
+		}
+
+		// Fires laser
+		if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+			// Allows you to shoot only if you have ammo
+			if spaceGame.ammoCount > 0 {
+				spaceGame.ammoCount--
+				spaceGame.audioPlayer.Rewind()
+				spaceGame.audioPlayer.Play()
+				spaceGame.laser[spaceGame.shotCount].xLaserPos = spaceGame.player.xPlayerPos + spaceGame.player.pic.Bounds().Dx()
+				spaceGame.laser[spaceGame.shotCount].yLaserPos = spaceGame.player.yPlayerPos + 512
+				spaceGame.shotCount++
+			}
+		}
+		// Prevents shotCount from going out of bounds
+		if spaceGame.shotCount >= 10 {
+			spaceGame.shotCount = 0
+		}
+		// Moves fired lasers
+		for i := 0; i < len(spaceGame.laser); i++ {
+			if spaceGame.laser[i].xLaserPos < 900 && spaceGame.laser[i].xLaserPos > 0 {
+				spaceGame.laser[i].xLaserPos += spaceGame.speed
+			} else if spaceGame.laser[i].xLaserPos >= 900 && spaceGame.laser[i].xLaserPos < 1000 {
+				spaceGame.ammoCount++
+				spaceGame.laser[i].xLaserPos = -200
+			}
+		}
+		return nil
+	} else {
+		inpututil.IsKeyJustPressed(ebiten.KeyLeft)
+		return nil
 	}
 
-	// Gets total number of lasers for ammoCount
-	if spaceGame.ammoCount == 9000 {
-		spaceGame.ammoCount = len(spaceGame.laser)
-	}
-
-	// Fires laser
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		// Allows you to shoot only if you have ammo
-		if spaceGame.ammoCount > 0 {
-			spaceGame.ammoCount--
-			spaceGame.laser[spaceGame.shotCount].xLaserPos = spaceGame.xPos + spaceGame.player.Bounds().Dx()
-			spaceGame.laser[spaceGame.shotCount].yLaserPos = spaceGame.yPos + 512
-			spaceGame.shotCount++
-		}
-	}
-	// Prevents shotCount from going out of bounds
-	if spaceGame.shotCount >= 10 {
-		spaceGame.shotCount = 0
-	}
-	// Moves fired lasers
-	for i := 0; i < len(spaceGame.laser); i++ {
-		if spaceGame.laser[i].xLaserPos < 900 && spaceGame.laser[i].xLaserPos > 0 {
-			spaceGame.laser[i].xLaserPos += spaceGame.speed
-		} else if spaceGame.laser[i].xLaserPos >= 900 && spaceGame.laser[i].xLaserPos < 1000 {
-			spaceGame.ammoCount++
-			spaceGame.laser[i].xLaserPos = -200
-		}
-	}
-
-	inpututil.IsKeyJustPressed(ebiten.KeyLeft)
-	return nil
 }
 
 func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
@@ -189,7 +216,7 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 
 	textOpts.GeoM.Reset()
 	textOpts.GeoM.Translate(x, 240)
-	text.Draw(screen, "yPos: "+strconv.Itoa(spaceGame.yPos), drawFace, textOpts)
+	text.Draw(screen, "Players yPos: "+strconv.Itoa(spaceGame.player.yPlayerPos), drawFace, textOpts)
 
 	textOpts.GeoM.Reset()
 	textOpts.GeoM.Translate(x, 270)
@@ -211,8 +238,8 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 	playerDrawOpts := ebiten.DrawImageOptions{}
 	playerDrawOpts.GeoM.Reset()
 	playerDrawOpts.GeoM.Translate(x, 500)
-	playerDrawOpts.GeoM.Translate(float64(spaceGame.xPos), float64(spaceGame.yPos))
-	screen.DrawImage(spaceGame.player, &playerDrawOpts)
+	playerDrawOpts.GeoM.Translate(float64(spaceGame.player.xPlayerPos), float64(spaceGame.player.yPlayerPos))
+	screen.DrawImage(spaceGame.player.pic, &playerDrawOpts)
 
 	// Draws laser blast on screen
 	laserDrawOpts := &ebiten.DrawImageOptions{}
@@ -240,14 +267,20 @@ func main() {
 	playerUnit := makePlayer()
 	enemyUnits := makeEnemy()
 	lasers := makeLaser()
+	soundContext := audio.NewContext(48000)
+
+	//rect := resolv.NewRectangle(200, 100, 32, 32)
+
 	spaceScrollerGame := starsAndSpaceGame{
-		player:     playerUnit,
-		enemy:      enemyUnits,
-		laser:      lasers,
-		background: backgroundPict,
-		font:       LoadFont("Ubuntu-Regular.ttf", 18),
-		speed:      2,
-		ammoCount:  9000,
+		player:       playerUnit,
+		enemy:        enemyUnits,
+		laser:        lasers,
+		background:   backgroundPict,
+		font:         LoadFont("Ubuntu-Regular.ttf", 18),
+		speed:        2,
+		ammoCount:    9000,
+		audioContext: soundContext,
+		audioPlayer:  LoadWav("LaserBlastSound.wav", soundContext),
 	}
 	err = ebiten.RunGame(&spaceScrollerGame)
 	if err != nil {
@@ -277,21 +310,24 @@ func LoadFont(fontFile string, size float64) font.Face {
 	return fontFace
 }
 
-// Function to select a random integer between a minimum and maximum value
+// randRange returns a random integer between a minimum and maximum value
 func randRange(min, max int) int {
 	return rand.Intn(max-min) + min
 }
 
-// Function that creates player entity
-func makePlayer() *ebiten.Image {
-	playerUnit, _, err := ebitenutil.NewImageFromFile("./Entities/FriendlyUFO.png")
+// makePlayer creates the player entity
+func makePlayer() playerShip {
+	playerEnt, _, err := ebitenutil.NewImageFromFile("./Entities/FriendlyUFO.png")
 	if err != nil {
 		fmt.Println("Unable to load Player unit:", err)
+	}
+	playerUnit := playerShip{
+		pic: playerEnt,
 	}
 	return playerUnit
 }
 
-// Function that creates enemy units
+// makeEnemy creates the enemy entities
 func makeEnemy() []*enemyShip {
 	enemyUnits := make([]*enemyShip, 0)
 	enemyEnt, _, err := ebitenutil.NewImageFromFile("./Entities/UFO.png")
@@ -316,4 +352,28 @@ func makeLaser() []*laserBlast {
 		laserShots[i].laserSpeed = 2
 	}
 	return laserShots
+}
+
+func playerCollisionCheck(spaceGame *starsAndSpaceGame) {
+	for _, enemies := range spaceGame.enemy {
+		if hit := spaceGame.player.collisionRect.Intersection(enemies.collisionRect); !hit.IsEmpty() {
+			spaceGame.state = endState
+		}
+	}
+}
+
+func LoadWav(name string, context *audio.Context) *audio.Player {
+	laserFile, err := os.Open(name)
+	if err != nil {
+		fmt.Println("Error Loading sound: ", err)
+	}
+	laserSound, err := wav.DecodeWithoutResampling(laserFile)
+	if err != nil {
+		fmt.Println("Error interpreting sound file: ", err)
+	}
+	soundPlayer, err := context.NewPlayer(laserSound)
+	if err != nil {
+		fmt.Println("Couldn't create sound player: ", err)
+	}
+	return soundPlayer
 }
