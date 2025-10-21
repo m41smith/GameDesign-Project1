@@ -47,25 +47,25 @@ type starsAndSpaceGame struct {
 }
 
 type playerShip struct {
-	pic           *ebiten.Image
-	xPlayerPos    int
-	yPlayerPos    int
-	collisionRect *resolv.ConvexPolygon
+	pic                 *ebiten.Image
+	xPlayerPos          int
+	yPlayerPos          int
+	playerCollisionRect *resolv.ConvexPolygon
 }
 
 type enemyShip struct {
-	pic           *ebiten.Image
-	xEnemyPos     int
-	yEnemyPos     int
-	collisionRect *resolv.ConvexPolygon
+	pic                *ebiten.Image
+	xEnemyPos          int
+	yEnemyPos          int
+	enemyCollisionRect *resolv.ConvexPolygon
 }
 
 type laserBlast struct {
-	pic           *ebiten.Image
-	xLaserPos     int
-	yLaserPos     int
-	laserSpeed    int
-	collisionRect *resolv.ConvexPolygon
+	pic                *ebiten.Image
+	xLaserPos          int
+	yLaserPos          int
+	laserSpeed         int
+	laserCollisionRect *resolv.ConvexPolygon
 }
 
 func NewEnemy(xStart, yStart int, image *ebiten.Image) *enemyShip {
@@ -84,6 +84,24 @@ func NewLaser(xStart, yStart int, image *ebiten.Image) *laserBlast {
 	}
 }
 
+// Trying to create collisions
+func (spaceGame *starsAndSpaceGame) Init() {
+	spaceGame.space = resolv.NewSpace(1000, 1000, 16, 16)
+
+	spaceGame.player.playerCollisionRect = resolv.NewRectangle(float64(spaceGame.player.xPlayerPos), float64(spaceGame.player.yPlayerPos), 55, 25)
+	spaceGame.space.Add(spaceGame.player.playerCollisionRect)
+
+	for i := 0; i < len(spaceGame.enemy); i++ {
+		spaceGame.enemy[i].enemyCollisionRect = resolv.NewRectangle(float64(spaceGame.enemy[i].xEnemyPos), float64(spaceGame.enemy[i].yEnemyPos), 55, 25)
+		spaceGame.space.Add(spaceGame.enemy[i].enemyCollisionRect)
+	}
+
+	for i := 0; i < len(spaceGame.laser); i++ {
+		spaceGame.laser[i].laserCollisionRect = resolv.NewRectangle(float64(spaceGame.laser[i].xLaserPos-21), float64(spaceGame.laser[i].yLaserPos-4), 42, 4)
+		spaceGame.space.Add(spaceGame.laser[i].laserCollisionRect)
+	}
+}
+
 func (spaceGame *starsAndSpaceGame) Update() error {
 	if spaceGame.state == playState {
 		backgroundWidth := spaceGame.background.Bounds().Dx()
@@ -94,6 +112,8 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 		if err != nil {
 			fmt.Println("Unable to load Enemy entity:", err)
 		}
+
+		// Converts key inputs into movement for player unit
 		if spaceGame.player.yPlayerPos <= -500 {
 			if ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
 				spaceGame.player.yPlayerPos += 0
@@ -113,12 +133,11 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 				spaceGame.player.yPlayerPos += 5
 			}
 		}
-		spaceGame.player.collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.player.xPlayerPos-55), float64(spaceGame.player.yPlayerPos-25), 55, 25)
 
+		// Moves enemy units and subtracts a point if they get past you
 		for i := 0; i < len(spaceGame.enemy); i++ {
 			if spaceGame.enemy[i].xEnemyPos > 0-spaceGame.enemy[i].pic.Bounds().Dx() {
 				spaceGame.enemy[i].xEnemyPos += -spaceGame.speed
-				spaceGame.enemy[i].collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.enemy[i].xEnemyPos-55), float64(spaceGame.enemy[i].yEnemyPos-25), 55, 25)
 			} else {
 				spaceGame.enemy[i] = NewEnemy(1000, 950, enemyEnt)
 				spaceGame.score -= 1
@@ -146,22 +165,20 @@ func (spaceGame *starsAndSpaceGame) Update() error {
 		if spaceGame.shotCount >= 10 {
 			spaceGame.shotCount = 0
 		}
+
 		// Moves fired lasers
 		for i := 0; i < len(spaceGame.laser); i++ {
 			if spaceGame.laser[i].xLaserPos < 900 && spaceGame.laser[i].xLaserPos > 0 {
 				spaceGame.laser[i].xLaserPos += spaceGame.speed
-				spaceGame.laser[i].collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.laser[i].xLaserPos-21), float64(spaceGame.laser[i].yLaserPos-4), 42, 4)
+
 			} else if spaceGame.laser[i].xLaserPos >= 900 && spaceGame.laser[i].xLaserPos < 1000 {
 				spaceGame.ammoCount++
 				spaceGame.laser[i].xLaserPos = -200
-				spaceGame.laser[i].collisionRect = resolv.NewRectangleFromTopLeft(float64(spaceGame.laser[i].xLaserPos-21), float64(spaceGame.laser[i].yLaserPos-4), 42, 4)
 			}
-
 		}
-
 		return nil
 	} else {
-		inpututil.IsKeyJustPressed(ebiten.KeyLeft)
+		// Implement Game Over
 		return nil
 	}
 
@@ -196,7 +213,7 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 		text.Draw(screen, "How to Play: Controls: Arrow Keys to Move (or W and S).", drawFace, textOpts)
 		textOpts.GeoM.Reset()
 		textOpts.GeoM.Translate(x+20, 60)
-		text.Draw(screen, "Space to shoot.", drawFace, textOpts)
+		text.Draw(screen, "Space to shoot. When out of ammo, wait for reload", drawFace, textOpts)
 
 		// Text explaining game objective
 		textOpts.GeoM.Reset()
@@ -208,28 +225,9 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 		textOpts.GeoM.Translate(x, 120)
 		text.Draw(screen, "Score: "+strconv.Itoa(spaceGame.score), drawFace, textOpts)
 
+		// Text displaying remaining ammunition
 		textOpts.GeoM.Reset()
 		textOpts.GeoM.Translate(x, 150)
-		text.Draw(screen, "EnemyPos: "+strconv.Itoa(spaceGame.enemy[0].xEnemyPos), drawFace, textOpts)
-
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x, 180)
-		text.Draw(screen, "Enemy Count: "+strconv.Itoa(len(spaceGame.enemy)), drawFace, textOpts)
-
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x, 210)
-		text.Draw(screen, "LaserPos: "+strconv.Itoa(spaceGame.laser[0].xLaserPos), drawFace, textOpts)
-
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x, 240)
-		text.Draw(screen, "Players yPos: "+strconv.Itoa(spaceGame.player.yPlayerPos), drawFace, textOpts)
-
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x, 270)
-		text.Draw(screen, "Shot Count: "+strconv.Itoa(spaceGame.shotCount), drawFace, textOpts)
-
-		textOpts.GeoM.Reset()
-		textOpts.GeoM.Translate(x, 300)
 		text.Draw(screen, "Ammo Count: "+strconv.Itoa(spaceGame.ammoCount), drawFace, textOpts)
 
 		// Draws enemy units on screen
@@ -255,9 +253,8 @@ func (spaceGame *starsAndSpaceGame) Draw(screen *ebiten.Image) {
 			screen.DrawImage(shots.pic, laserDrawOpts)
 		}
 	} else {
-
+		// Implement Game Over
 	}
-
 }
 
 // Layout Sets window parameters
@@ -273,12 +270,11 @@ func main() {
 	if err != nil {
 		fmt.Println("Unable to load background image:", err)
 	}
+
 	playerUnit := makePlayer()
 	enemyUnits := makeEnemy()
 	lasers := makeLaser()
 	soundContext := audio.NewContext(48000)
-
-	//rect := resolv.NewRectangle(200, 100, 32, 32)
 
 	spaceScrollerGame := starsAndSpaceGame{
 		player:       playerUnit,
@@ -363,10 +359,12 @@ func makeLaser() []*laserBlast {
 	return laserShots
 }
 
+// Collision code borrowed from slides for testing
 func playerCollisionCheck(spaceGame *starsAndSpaceGame) {
 	for _, enemies := range spaceGame.enemy {
-		if hit := spaceGame.player.collisionRect.Intersection(enemies.collisionRect); !hit.IsEmpty() {
-			spaceGame.state = endState
+		if hit := spaceGame.player.playerCollisionRect.Intersection(enemies.enemyCollisionRect); !hit.IsEmpty() {
+			//spaceGame.state = endState
+			spaceGame.score += 1000
 		}
 	}
 }
